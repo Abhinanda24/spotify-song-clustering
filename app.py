@@ -2,18 +2,12 @@ import streamlit as st
 import pandas as pd
 import kagglehub
 import os
-import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
+import plotly.express as px
 
 st.set_page_config(page_title="Spotify ML Dashboard", layout="wide")
-
-# -----------------------------
-# Title
-# -----------------------------
-st.title("🎵 Spotify Song Clustering Dashboard")
-st.markdown("Machine Learning clustering of Spotify songs using **K-Means**")
 
 # -----------------------------
 # Load dataset
@@ -21,13 +15,13 @@ st.markdown("Machine Learning clustering of Spotify songs using **K-Means**")
 @st.cache_data
 def load_data():
     path = kagglehub.dataset_download("zaheenhamidani/ultimate-spotify-tracks-db")
-    data = pd.read_csv(os.path.join(path, "SpotifyFeatures.csv"))
-    return data
+    df = pd.read_csv(os.path.join(path, "SpotifyFeatures.csv"))
+    return df
 
 data = load_data()
 
 # -----------------------------
-# Feature selection
+# Features
 # -----------------------------
 features = ['danceability','energy','tempo','loudness','valence']
 
@@ -37,7 +31,7 @@ scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
 # -----------------------------
-# Train model
+# Train clustering model
 # -----------------------------
 kmeans = KMeans(n_clusters=4, random_state=42)
 clusters = kmeans.fit_predict(X_scaled)
@@ -45,80 +39,122 @@ clusters = kmeans.fit_predict(X_scaled)
 data["Cluster"] = clusters
 
 cluster_names = {
-0: "Balanced Songs",
-1: "Calm Songs",
-2: "Fast Energetic",
-3: "Happy Dance"
+0:"Balanced",
+1:"Calm",
+2:"Energetic",
+3:"Happy"
 }
 
 data["Cluster Type"] = data["Cluster"].map(cluster_names)
 
 # -----------------------------
-# Sidebar filters
+# Sidebar
 # -----------------------------
-st.sidebar.header("🎛 Filters")
+st.sidebar.title("🎛 Controls")
 
 cluster_filter = st.sidebar.multiselect(
-"Select Cluster",
-options=data["Cluster Type"].unique(),
+"Cluster Type",
+data["Cluster Type"].unique(),
 default=data["Cluster Type"].unique()
 )
 
-filtered_data = data[data["Cluster Type"].isin(cluster_filter)]
+song_search = st.sidebar.text_input("Search Song")
 
-# -----------------------------
-# Search
-# -----------------------------
-song_search = st.text_input("🔍 Search for a song")
+filtered = data[data["Cluster Type"].isin(cluster_filter)]
 
 if song_search:
-    filtered_data = filtered_data[
-        filtered_data["track_name"].str.contains(song_search, case=False)
+    filtered = filtered[
+        filtered["track_name"].str.contains(song_search, case=False)
     ]
 
 # -----------------------------
-# Layout
+# Header
 # -----------------------------
-col1, col2 = st.columns(2)
+st.title("🎵 Spotify Song Analytics Dashboard")
+st.markdown("Interactive **Machine Learning clustering dashboard**")
+
+# -----------------------------
+# KPI Cards
+# -----------------------------
+col1,col2,col3,col4 = st.columns(4)
+
+col1.metric("Total Songs",len(data))
+col2.metric("Clusters",data["Cluster"].nunique())
+col3.metric("Avg Energy",round(data["energy"].mean(),2))
+col4.metric("Avg Danceability",round(data["danceability"].mean(),2))
+
+st.divider()
 
 # -----------------------------
 # Cluster Distribution
 # -----------------------------
+col1,col2 = st.columns(2)
+
 with col1:
-    st.subheader("📊 Cluster Distribution")
-    st.bar_chart(filtered_data["Cluster"].value_counts())
+
+    fig = px.histogram(
+        filtered,
+        x="Cluster Type",
+        title="Cluster Distribution",
+        color="Cluster Type"
+    )
+
+    st.plotly_chart(fig,use_container_width=True)
 
 # -----------------------------
 # PCA Visualization
 # -----------------------------
 with col2:
-    st.subheader("📈 Cluster Visualization (PCA)")
 
     pca = PCA(n_components=2)
     X_pca = pca.fit_transform(X_scaled)
 
-    fig, ax = plt.subplots()
+    pca_df = pd.DataFrame({
+        "PCA1":X_pca[:,0],
+        "PCA2":X_pca[:,1],
+        "Cluster":clusters
+    })
 
-    scatter = ax.scatter(
-        X_pca[:,0],
-        X_pca[:,1],
-        c=clusters,
-        cmap="viridis",
-        s=5
+    fig = px.scatter(
+        pca_df,
+        x="PCA1",
+        y="PCA2",
+        color=pca_df["Cluster"].astype(str),
+        title="Cluster Visualization (PCA)",
+        opacity=0.6
     )
 
-    ax.set_xlabel("PCA 1")
-    ax.set_ylabel("PCA 2")
+    st.plotly_chart(fig,use_container_width=True)
 
-    st.pyplot(fig)
+st.divider()
+
+# -----------------------------
+# Feature Explorer
+# -----------------------------
+st.subheader("🎧 Audio Feature Explorer")
+
+feature = st.selectbox(
+"Select Feature",
+features
+)
+
+fig = px.histogram(
+    filtered,
+    x=feature,
+    color="Cluster Type",
+    nbins=50
+)
+
+st.plotly_chart(fig,use_container_width=True)
 
 # -----------------------------
 # Song Table
 # -----------------------------
-st.subheader("🎧 Clustered Songs")
+st.subheader("🎵 Song Explorer")
 
 st.dataframe(
-    filtered_data[
+    filtered[
         ["track_name","artist_name","Cluster Type","danceability","energy","tempo"]
-    ].head(100)
+    ],
+    height=400
 )
