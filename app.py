@@ -5,8 +5,11 @@ from sklearn.cluster import KMeans
 
 st.title("Spotify Song Clustering")
 
-# Load dataset
-data = pd.read_csv("SpotifyFeatures.csv")
+import kagglehub
+import os
+
+path = kagglehub.dataset_download("zaheenhamidani/ultimate-spotify-tracks-db")
+data = pd.read_csv(os.path.join(path, "SpotifyFeatures.csv"))
 
 features = ['danceability','energy','tempo','loudness','valence']
 X = data[features].dropna()
